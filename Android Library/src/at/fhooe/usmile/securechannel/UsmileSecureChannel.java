@@ -5,6 +5,8 @@ import java.util.Arrays;
 import android.content.Context;
 import android.os.Handler;
 import android.util.Log;
+import at.fhooe.usmile.securechannel.keyagreement.SRP6a;
+import at.fhooe.usmile.securechannel.keyagreement.UsmileKeyAgreement;
 
 /**
  * @author Endalkachew Asnake
@@ -114,7 +116,7 @@ public class UsmileSecureChannel implements ISEServiceStatusListener{
 
 		
 		seConnection = new SEConnection(context, this);
-		usmileKeyAgreement = new UsmileKeyAgreement(); 
+		usmileKeyAgreement = new SRP6a(); 
 		channelSatusListener = listener;
 	}
 
@@ -149,7 +151,7 @@ public class UsmileSecureChannel implements ISEServiceStatusListener{
 					starttime = System.nanoTime();
 					byte[] responseBuffer;
 
-					byte[] publicThis = usmileKeyAgreement.initWithSRP();
+					byte[] publicThis = usmileKeyAgreement.init();
  					
 					/**
 					 * send 255 as data and last byte as LE

@@ -1,27 +1,24 @@
-package at.fhooe.usmile.securechannel;
+package at.fhooe.usmile.securechannel.keyagreement;
 
 import java.math.BigInteger;
 import java.security.SecureRandom;
-import java.util.Random;
 
 import org.bouncycastle.crypto.CryptoException;
 import org.bouncycastle.crypto.Digest;
 import org.bouncycastle.crypto.digests.SHA256Digest;
 import org.bouncycastle.jce.spec.ECParameterSpec;
 import org.bouncycastle.math.ec.ECAlgorithms;
-import org.bouncycastle.math.ec.ECConstants;
-import org.bouncycastle.math.ec.ECCurve;
 import org.bouncycastle.math.ec.ECCurve.AbstractF2m;
 import org.bouncycastle.math.ec.ECFieldElement;
-import org.bouncycastle.math.ec.ECFieldElement.Fp;
 import org.bouncycastle.math.ec.ECPoint;
-import org.bouncycastle.math.ec.custom.sec.SecP192R1Curve;
-import org.bouncycastle.math.ec.custom.sec.SecP192R1Field;
-import org.bouncycastle.math.ec.custom.sec.SecP192R1FieldElement;
-import org.bouncycastle.math.raw.Nat192;
 import org.bouncycastle.util.BigIntegers;
 
-public class SRP5Util {
+/**
+ * Utils for the elliptic curve variant of SRP (SRP-5)
+ * @author michaelhoelzl
+ *
+ */
+public class ECSRPUtil {
 	private static BigInteger ZERO = BigInteger.valueOf(0);
 	private static BigInteger ONE = BigInteger.valueOf(1);
 
@@ -143,12 +140,10 @@ public class SRP5Util {
 		            ECFieldElement beta = I2FEP(ecSpec, findSquareRoot(rhs.toBigInteger(), q));
 					
 					if((beta==null || beta.square().toBigInteger().compareTo(rhs.toBigInteger())!=0) && counter<=5) { //No point found, increase i and go back to o2 generation
-//						System.out.println("No Point found, increase i by one " + counter);
 						return computeRandomPoint(ecSpec, digest, i1.add(ONE),++counter);
 					} else {
 						if(mu == 1){
 							y = beta.negate();
-							System.out.println("NEGATED BETA");
 						} else if(mu == 0){
 							//Do nothing
 							y = beta;
@@ -157,8 +152,6 @@ public class SRP5Util {
 						outputE = ecSpec.getCurve().validatePoint(x.toBigInteger(), y.toBigInteger());
 						if(outputE!=null){
 							System.out.println("counter : "+ counter);
-//							System.out.println("REDP point: "+ outputE.toString());
-//							System.out.println("is point on curve " + outputE.isValid());
 							outputE=outputE.multiply(ecSpec.getCurve().getCofactor());
 						}
 					}
@@ -169,144 +162,11 @@ public class SRP5Util {
 		return outputE;
 	}
 	
-	private static ECFieldElement sqrt192r1(BigInteger x, ECParameterSpec ecspec)
-	    {
-	        // Raise this element to the exponent 2^190 - 2^62
-
-	        int[] x1 = Nat192.fromBigInteger(x);
-	        if (Nat192.isZero(x1) || Nat192.isOne(x1))
-	        {
-	            return null;
-	        }
-
-	        int[] t1 = Nat192.create();
-	        int[] t2 = Nat192.create();
-
-	        SecP192R1Field.square(x1, t1);
-	        SecP192R1Field.multiply(t1, x1, t1);
-
-	        SecP192R1Field.squareN(t1, 2, t2);
-	        SecP192R1Field.multiply(t2, t1, t2);
-
-	        SecP192R1Field.squareN(t2, 4, t1);
-	        SecP192R1Field.multiply(t1, t2, t1);
-
-	        SecP192R1Field.squareN(t1, 8, t2);
-	        SecP192R1Field.multiply(t2, t1, t2);
-
-	        SecP192R1Field.squareN(t2, 16, t1);
-	        SecP192R1Field.multiply(t1, t2, t1);
-
-	        SecP192R1Field.squareN(t1, 32, t2);
-	        SecP192R1Field.multiply(t2, t1, t2);
-
-	        SecP192R1Field.squareN(t2, 64, t1);
-	        SecP192R1Field.multiply(t1, t2, t1);
-
-	        SecP192R1Field.squareN(t1, 62, t1);
-	        SecP192R1Field.square(t1, t2);
-
-//	        System.out.println("T1  " + Nat192.toBigInteger(t1));
-//	        System.out.println("T2  " + Nat192.toBigInteger(t2));
-	        return Nat192.eq(x1, t2) ? ecspec.getCurve().fromBigInteger(Nat192.toBigInteger(t1)) : null;	    
-	}
-
-	private static BigInteger findSquareRootFieldElement(BigInteger x, BigInteger q){
-
-        if (!q.testBit(0))
-        {
-            throw new RuntimeException("not done yet");
-        }
-
-        // note: even though this class implements ECConstants don't be tempted to
-        // remove the explicit declaration, some J2ME environments don't cope.
-
-        if (q.testBit(1)) // q == 4m + 3
-        {
-            BigInteger e = q.shiftRight(2).add(ECConstants.ONE);
-            return  x.modPow(e, q);
-        }
-
-        if (q.testBit(2)) // q == 8m + 5
-        {
-//            BigInteger t1 = x.modPow(q.shiftRight(3), q);
-//            BigInteger t2 = modMult(t1, x);
-//            BigInteger t3 = modMult(t2, t1);
-//
-//            if (t3.equals(ECConstants.ONE))
-//            {
-//                return checkSqrt(new Fp(q, r, t2));
-//            }
-//
-//            // TODO This is constant and could be precomputed
-//            BigInteger t4 = ECConstants.TWO.modPow(q.shiftRight(2), q);
-//
-//            BigInteger y = modMult(t2, t4);
-//
-//            return checkSqrt(new Fp(q, r, y));
-        }
-
-        // q == 8m + 1
-
-//        BigInteger legendreExponent = q.shiftRight(1);
-//        if (!(x.modPow(legendreExponent, q).equals(ECConstants.ONE)))
-//        {
-//            return null;
-//        }
-//
-//        BigInteger X = this.x;
-//        BigInteger fourX = modDouble(modDouble(X));
-//
-//        BigInteger k = legendreExponent.add(ECConstants.ONE), qMinusOne = q.subtract(ECConstants.ONE);
-//
-//        BigInteger U, V;
-//        Random rand = new Random();
-//        do
-//        {
-//            BigInteger P;
-//            do
-//            {
-//                P = new BigInteger(q.bitLength(), rand);
-//            }
-//            while (P.compareTo(q) >= 0
-//                || !modReduce(P.multiply(P).subtract(fourX)).modPow(legendreExponent, q).equals(qMinusOne));
-//
-//            BigInteger[] result = lucasSequence(P, X, k);
-//            U = result[0];
-//            V = result[1];
-//
-//            if (modMult(V, V).equals(fourX))
-//            {
-//                return new ECFieldElement.Fp(q, r, modHalfAbs(V));
-//            }
-//        }
-//        while (U.equals(ECConstants.ONE) || U.equals(qMinusOne));
-
-        return null;
-	}
 	private static BigInteger findSquareRoot(BigInteger alpha, BigInteger p) {
 		BigInteger beta = null;
 		if(p.mod(BigInteger.valueOf(4)).compareTo(BigInteger.valueOf(3))== 0){
-//			System.out.println("p = 3 mod 4");
-//			BigInteger k1 = p.subtract(BigInteger.valueOf(3)).divide(BigInteger.valueOf(4)).mod(p);
 			BigInteger k = p.shiftRight(2).add(ONE);
-//			System.out.println("p " + Converter.getHex(p.toByteArray()));
-//			System.out.println("k " + k.toString());
-//			System.out.println("k " + Converter.getHex(k.toByteArray()));
-//			System.out.println("k1 " + k1.toString());
-//			System.out.println("k1 " + Converter.getHex(k1.toByteArray()));
-//			System.out.println("k " + Converter.getHex(k.toByteArray()));
-//			System.out.println("k " + Converter.getHex(p.shiftRight(2).toByteArray()));
 			beta = alpha.modPow(k,p);
-//			System.out.println("p " + Converter.getHex(p.toByteArray()));
-//			System.out.println("k " + Converter.getHex(alpha.modPow(BigInteger.valueOf(2),p).toByteArray()));
-//			System.out.println("alpha " + alpha.toString());
-//			System.out.println("alpha^0203 " + 
-//					Converter.getHex(alpha.modPow(
-//							new BigInteger(Converter.hexStringToByteArray("03")),p).toByteArray()));
-//			System.out.println("fsqrt beta: "+Converter.getHex(beta.toByteArray()));
-//			System.out.println("fsqrt alpha: "+alpha.toString());
-//			System.out.println("fsqrt beta^2: "+beta.modPow(BigInteger.valueOf(2), p).toString());
 		} else if(p.mod(BigInteger.valueOf(8)).compareTo(BigInteger.valueOf(5)) == 0){
 			System.out.println("p = 8 mod 5");
 			BigInteger k = p.subtract(BigInteger.valueOf(5)).divide(BigInteger.valueOf(8));
@@ -389,15 +249,9 @@ public class SRP5Util {
 	public static ECFieldElement SVDPSRP5CLIENT(ECParameterSpec ecSpec,Digest digest, ECPoint W_C, ECPoint W_S, ECPoint V_pi, BigInteger s, BigInteger uPi) {
 		BigInteger i2 = calculateI2(ecSpec,digest,W_C,W_S);
 
-		
 		ECPoint e1 = calculateE1(ecSpec,digest,V_pi);
 		ECPoint e2 = W_S.subtract(e1);
-//		System.out.println("E1 " +e1.toString());
-//		System.out.println("W_S " +W_S.toString());
-//		System.out.println("E2 " +e2.toString());
 		ECPoint zG = e2.multiply(s.add(i2.multiply(uPi)));
-		
-		
 		return zG.normalize().getXCoord();
 	}
 

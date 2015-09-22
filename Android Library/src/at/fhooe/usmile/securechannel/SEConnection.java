@@ -95,12 +95,10 @@ class SEConnection implements SEService.CallBack {
 		    Session session;
 			try {
 				session = reader.openSession();
-			//	Log.i("Info", "Create logical channel within the session...");				  
 			    channel = session.openLogicalChannel(aid); 
 			    return true;
 			} catch (Exception ex) {
-				// TODO Auto-generated catch block
-				Toast.makeText(appContext.getApplicationContext(), ex.getMessage(), Toast.LENGTH_SHORT).show();
+				ex.printStackTrace();
 			}
 	    
 		}

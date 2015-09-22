@@ -5,13 +5,17 @@ import java.util.Arrays;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import org.bouncycastle.jce.provider.BrokenPBE.Util;
+
 import android.content.Context;
 import android.os.Handler;
 import android.util.Log;
+import at.fhooe.usmile.securechannel.keyagreement.ECSRP;
+import at.fhooe.usmile.securechannel.keyagreement.UsmileKeyAgreement;
 
 public class UsmileSecureChannel_EC192 implements ISEServiceStatusListener{
 
-	private static final int LENGTH_EC_POINT =  UsmileKeyAgreement_EC192.LENGTH_EC_POINT;
+	private static final int LENGTH_EC_POINT =  ECSRP.LENGTH_EC_POINT;
 	private static final int LENGTH_SALT = 16;
 	private static final int LENGTH_IV = 16;
 	
@@ -35,7 +39,7 @@ public class UsmileSecureChannel_EC192 implements ISEServiceStatusListener{
 	private final static String STATUS_PASSWORD_CHANGE_FAILED = "0105";
 	private final static String STATUS_PASSWORD_SHORT = "0106";
 	
-    static private UsmileKeyAgreement_EC192 usmileKeyAgreement;
+    static private UsmileKeyAgreement usmileKeyAgreement;
     
     static private SecureMessaging usmileSecureSession;
     private boolean sessionSecure;
@@ -94,7 +98,7 @@ public class UsmileSecureChannel_EC192 implements ISEServiceStatusListener{
 			IChannelStatusListener listener) {
 
 		seConnection = new SEConnection(context, this);
-		usmileKeyAgreement = new UsmileKeyAgreement_EC192(); 
+		usmileKeyAgreement = new ECSRP(); 
 		channelSatusListener = listener;
 		
     }
@@ -111,6 +115,16 @@ public class UsmileSecureChannel_EC192 implements ISEServiceStatusListener{
 		seConnection.closeConnection();
 	}
 
+	public static String byteArrayToHexString(byte[] array) {
+		StringBuffer hexString = new StringBuffer();
+		for (byte b : array) {
+			int intVal = b & 0xff;
+			if (intVal < 0x10)
+				hexString.append("0");
+			hexString.append(Integer.toHexString(intVal));
+		}
+		return hexString.toString();
+	}
 
 	public void initConnection(byte[] appletID, int readerIndex){
 		
@@ -120,6 +134,7 @@ public class UsmileSecureChannel_EC192 implements ISEServiceStatusListener{
 		initThread = new Thread() {
 			public void run() {
 				
+				System.out.println("AID "+ byteArrayToHexString(AID));
 				if(seConnection.selectApplet(AID, selectedReader)){
 					starttime = System.nanoTime();
 					SW = STATUS_INITIALIZED;
@@ -136,6 +151,8 @@ public class UsmileSecureChannel_EC192 implements ISEServiceStatusListener{
 	public void authenticate(byte[] userID, final byte[] password){
 		authThread = new Thread() {
 			public void run() {
+
+				SW = STATUS_AUTH_FAILED_FROM_SE;
 				
                 cmdApdu1 = getCommandApdu(CLA, (byte) 0x20, P1, P2,
                         new byte[]{}, LE);
@@ -143,6 +160,8 @@ public class UsmileSecureChannel_EC192 implements ISEServiceStatusListener{
                 seConnection.sendCommand(cmdApdu1.getApduBuffer());
 				
                 runKeyAgreement(password);
+                
+				handler.post(submitToCallBackListener);
 			}
 		};
 		authThread.start();
@@ -172,25 +191,7 @@ public class UsmileSecureChannel_EC192 implements ISEServiceStatusListener{
     }
 
     public CommandApdu getCommandApdu(byte CLA, byte INS, byte P1, byte P2, byte[] data, byte Le) {
-    	CommandApdu cApdu = null;
-//        byte[] apduByte = null;
-//        if (data.length == 0) {
-//            apduByte = new byte[5];
-//        } else {
-//            apduByte = new byte[data.length + 6];
-//        }
-//        apduByte[0] = CLA;
-//        apduByte[1] = INS;
-//        apduByte[2] = P1;
-//        apduByte[3] = P2;
-//        if (data.length > 0) {
-//            apduByte[4] = (byte) data.length;
-//            System.arraycopy(data, 0, apduByte, 5, data.length);
-//            apduByte[5 + data.length] = Le;
-//        } else {
-//            apduByte[4] = Le;
-//        }
-        cApdu = new CommandApdu(CLA, INS, P1, P2, data, Le);
+    	CommandApdu cApdu = new CommandApdu(CLA, INS, P1, P2, data, Le);
         return cApdu;
     }
 
@@ -202,101 +203,84 @@ public class UsmileSecureChannel_EC192 implements ISEServiceStatusListener{
     private void runKeyAgreement(byte[] passwordBytes) {
 
         starttime = System.nanoTime();
-
-
-        byte[] publicThis = usmileKeyAgreement.initWithSRP();
-//        System.out.println("this public key " + Converter.getHex(publicThis));
+        
+        byte[] publicThis = usmileKeyAgreement.init();
+        System.out.println("client initialization " + (System.nanoTime()-starttime)/1000);
+        
         /**
          * send 255 as data and last byte as LE
          */
         cmdApdu1 = getCommandApdu(CLA, INS_KEYAG_STAGE1, P1, P2,
                 publicThis, LE);
 
-        // cmdApdu1 = getCommandApdu(CLA, INS_KEYAG_STAGE1, P1, P2,
-        //       usmileKeyAgreement.initWithSRP(), LE);
-//        System.out.println(Converter.getHex(cmdApdu1.getBytes()));
-
-        long startInit=System.nanoTime();
         ResponseApdu respApdu = new ResponseApdu(seConnection.sendCommand(cmdApdu1.getApduBuffer()));
-
 		step1SEresponseTime = seConnection.getElapsedTime() / 1000;
 		
-        long endinit=System.nanoTime();
-        System.out.println("initialization in "
-                + (endinit - startInit) / 1000 + " µsec");
-        
-//        System.out.println("Response S1: "+Converter.getHex(respApdu.getBytes()));
-
         byte[] serverInitSRPResponse = respApdu.getData();
         
         /**
          * for performance testing *
          */
-        //step1SEresponseTime = seConnection.getElapsedTime() / 1000;
-        //System.out.println(step1SEresponseTime);
         if (statusOk(respApdu)) 
         {
-//            cmdApdu1 = getCommandApdu(CLA, INS_KEYAG_STAGE2, P1, P2,
-//                    new byte[]{}, LE);
-
-//            respApdu = cardChannel.transmit(cmdApdu1);
-//            byte[] respData = respApdu.getBytes();
-//            System.out.println("Response S2: "+Converter.getHex(respData));
+            long startClient = System.nanoTime();
+			byte[] serverPublicKey = Arrays.copyOfRange(serverInitSRPResponse,
+					0, LENGTH_EC_POINT);
+			byte[] salt = Arrays.copyOfRange(serverInitSRPResponse,
+					LENGTH_EC_POINT, LENGTH_EC_POINT + LENGTH_SALT);
+			byte[] iv = Arrays.copyOfRange(serverInitSRPResponse,
+					LENGTH_EC_POINT + LENGTH_SALT, LENGTH_EC_POINT
+							+ LENGTH_SALT + LENGTH_IV);
+			byte[] authData = usmileKeyAgreement.computeSessionKey(
+					serverPublicKey, "usmile".getBytes(), salt,
+					"usmile".getBytes());
+			
+            long endClient = System.nanoTime();
             
-            if (statusOk(respApdu)) {
-            	byte[] serverPublicKey = Arrays.copyOfRange(serverInitSRPResponse, 0, LENGTH_EC_POINT );
-                byte[] salt = Arrays.copyOfRange(serverInitSRPResponse, LENGTH_EC_POINT, LENGTH_EC_POINT + LENGTH_SALT);
-                byte[] iv = Arrays.copyOfRange(serverInitSRPResponse, LENGTH_EC_POINT + LENGTH_SALT, LENGTH_EC_POINT + LENGTH_SALT + LENGTH_IV);
-                byte[] authData = usmileKeyAgreement.computeSessionKey(serverPublicKey, "usmile".getBytes(), salt, "usmile".getBytes());
+            System.out.println("client secret computation " + (endClient-startClient)/1000);
+            
+//			cmdApdu1 = getCommandApdu(CLA, (byte) 0x10, P1, P2, authData, LE);
+//			respApdu = new ResponseApdu(seConnection.sendCommand(cmdApdu1
+//					.getApduBuffer()));
+			// System.out.println("Response Output: "+
+			// Converter.getHex(respData));
 
-                cmdApdu1 = getCommandApdu(CLA, (byte) 0x10, P1, P2, authData, LE);
-                respApdu = new ResponseApdu(seConnection.sendCommand(cmdApdu1.getApduBuffer()));
-                byte[] respData = respApdu.getData();
-//                System.out.println("Response Output: "+ Converter.getHex(respData));
+			cmdApdu1 = getCommandApdu(CLA, INS_KEYAG_STAGE3, P1, P2, authData,
+					LE);
 
-                cmdApdu1 = getCommandApdu(CLA, INS_KEYAG_STAGE3, P1, P2, authData, LE);
-                
-                startInit=System.nanoTime();
-                respApdu = new ResponseApdu(seConnection.sendCommand(cmdApdu1.getApduBuffer()));
+			respApdu = new ResponseApdu(seConnection.sendCommand(cmdApdu1
+					.getApduBuffer()));
 
-				step2SEresponseTime = seConnection.getElapsedTime() / 1000;
-				
-                endinit=System.nanoTime();
-                
-                System.out.println("verification in "
-                        + (endinit - startInit) / 1000 + " µsec");
-                respData = respApdu.getData();
-//                System.out.println("Own authentication: "+ Converter.getHex(authData));
-//                System.out.println("Response S3: "+ Converter.getHex(respData));
+			step2SEresponseTime = seConnection.getElapsedTime() / 1000;
 
-                //step2SEresponseTime = seConnection.getElapsedTime() / 1000;
-                //System.out.println(step2SEresponseTime);
+			if (statusOk(respApdu)) {
+				if (usmileKeyAgreement.verifySEResponse(Arrays.copyOf(
+						respApdu.getData(), 32))) {
+					endtime = System.nanoTime();
+					
+					sessionSecure = true;
+					usmileSecureSession = new SecureMessaging(
+							usmileKeyAgreement.getSessionKey(), iv);
 
-                if (statusOk(respApdu)) {
-                    if (usmileKeyAgreement.verifySEResponse(Arrays.copyOf(respApdu.getData(), 32))) {
-                        sessionSecure = true;
-                         usmileSecureSession = new SecureMessaging(usmileKeyAgreement
-                                .getSessionKey(), iv);
-                        
-                        endtime = System.nanoTime();
-
-                        overAllKeyAgreementElapsedTime = (endtime - starttime) / 1000;
-                        System.out.println("success in "
-                                + overAllKeyAgreementElapsedTime + " µsec");
-                        System.out.println("Authenticated \n");
-						SW = STATUS_CONNECTED;
-                    }
-				}else{
-					Log.i("uschannel ", "from device authentication failed ");
-					SW = STATUS_AUTH_FAILED_FROM_APP;						
+					overAllKeyAgreementElapsedTime = (endtime - starttime) / 1000;
+					
+					System.out.println("success in "
+							+ overAllKeyAgreementElapsedTime + " µsec");
+					System.out.println("Authenticated \n");
+					
+					SW = STATUS_CONNECTED;
+				} else {
+					SW = STATUS_AUTH_FAILED_FROM_APP;
 				}
+			} else {
+				Log.i("uschannel ", "from device authentication failed ");
+				SW = STATUS_AUTH_FAILED_FROM_SE;
+			}
 
-            } else {
-                System.out.println("failed : ");
-				SW = STATUS_AUTH_FAILED_FROM_APP;		
-            }
+        } else {
+            System.out.println("failed : ");
+			SW = STATUS_AUTH_FAILED_FROM_SE;		
         }
-		handler.post(submitToCallBackListener);
     }
 
     /**
@@ -340,10 +324,7 @@ public class UsmileSecureChannel_EC192 implements ISEServiceStatusListener{
     }
 
     public boolean statusOk(ResponseApdu resp) {
-        if (new BigInteger(resp.getSW()).intValue()==0x9000) {
-            return true;
-        }
-        return false;
+    	return resp.statusOk();
     }
 
 	@Override
