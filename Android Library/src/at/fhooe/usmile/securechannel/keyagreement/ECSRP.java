@@ -1,116 +1,127 @@
 package at.fhooe.usmile.securechannel.keyagreement;
 
 import java.math.BigInteger;
-import java.security.Security;
 import java.util.Arrays;
 
 import org.bouncycastle.crypto.digests.SHA256Digest;
 import org.bouncycastle.jce.ECNamedCurveTable;
 import org.bouncycastle.jce.spec.ECParameterSpec;
-import org.bouncycastle.math.ec.ECFieldElement;
 import org.bouncycastle.math.ec.ECPoint;
 
+import at.fhooe.usmile.securechannel.CommandApdu;
 import at.fhooe.usmile.securechannel.Converter;
 
 
 /**
+ * This is an implementation of the elliptic curve variant of the Secure Remote
+ * Password (SRP-5) password-authenticated secure channel protocol from IEEE Std
+ * 1363.2-2008.
+ * 
+ * This implementation uses the elliptic curve secp192k1. For the usage of
+ * another elliptic curve, the applet implementation needs to be adapted.
+ * 
  * @author Michael Hölzl
- *
  */
 public class ECSRP extends AbstractKeyAgreement{
 
 	public final static short LENGTH_MODULUS = (short) 0x18;
 	public final static short LENGTH_EC_POINT = (short) (LENGTH_MODULUS * 2 +1);
 	
-	/*
-	 * shared secret at the end of key agreement
+	/**
+	 * Used EC parameters
 	 */
-	private ECFieldElement sharedSecret;
-	private byte[] K; 
-
-	private byte[] o3; 
-	private byte[] iv;
-	
-	private ECParameterSpec ecSpec;
-	private byte[] authData;
-	private byte[] publicClient;
-	
-	private ECPoint Q_A;
-	private ECPoint Q_B;
-	private ECPoint V_pi;
-	private BigInteger U_pi;
-
-	private BigInteger a;
-
+	private ECParameterSpec mECSpec;
 	
 	/**
-	 * key agreement init
+	 * Authentication data sent to server
 	 */
-	public ECSRP() {
+	private byte[] mAuthData;
+	
+	/**
+	 * Public keys
+	 */
+	private ECPoint Q_A;
+	private ECPoint Q_B;
 
-	}
+	/**
+	 * Private key
+	 */
+	private BigInteger d_A;
 
+	/**
+	 * Password derived points
+	 */
+	private ECPoint V_pi;
+	private BigInteger x;
+
+	/**
+	 * Random scrambling parameter derived from the x-coordinates of the public keys
+	 */
+	private byte[] u; 
+
+	@Override
 	public byte[] init() {
 		byte[] aRandom = new byte[32];
 
-		ecSpec = ECNamedCurveTable.getParameterSpec("secp192r1");
+		mECSpec = ECNamedCurveTable.getParameterSpec("secp192r1");
 		
 		generateRandom(aRandom);
 		
-		a = new BigInteger(1, aRandom);
+		d_A = new BigInteger(1, aRandom);
 
-		Q_A = ecSpec.getG().multiply(a);
+		Q_A = mECSpec.getG().multiply(d_A);
 
-		publicClient = Q_A.getEncoded(false);
-		if (publicClient.length == 257) {
+		byte[] publicClient = Q_A.getEncoded(false);
+		if (publicClient.length == 257) { //Assure that no additional 0 was added
 			publicClient = Arrays.copyOfRange(publicClient, 1, 257);
-			 
 		}
 		return publicClient;
 	}
 
+	@Override
 	public byte[] computeSessionKey(byte[] externalPublic, byte[] identity,
 			byte[] salt, byte[] password) {
-		U_pi = ECSRPUtil.calculateUPi(new SHA256Digest(), ecSpec.getN(), salt,
+		x = ECSRPUtil.calculateUPi(new SHA256Digest(), mECSpec.getN(), salt,
 				identity, password);
-		V_pi = ECSRPUtil.calculateVPi(ecSpec,U_pi);
+		V_pi = ECSRPUtil.calculateVPi(mECSpec,x);
 
-		Q_B = ecSpec.getCurve().decodePoint(externalPublic);
+		Q_B = mECSpec.getCurve().decodePoint(externalPublic);
 
 		/**
 		 * validate public key and through exception if B.mod(N) = 0
 		 */
-		sharedSecret = ECSRPUtil.SVDPSRP5CLIENT(ecSpec,new SHA256Digest(), Q_A, Q_B, V_pi, a, U_pi);
+		mSharedSecret = ECSRPUtil.SVDPSRP5CLIENT(mECSpec,new SHA256Digest(), Q_A, Q_B, V_pi, d_A, x).getEncoded();
 
 		/**
 		 * compute K = H(sharedSecret)
 		 */
-		K = msgDigest_SHA256.digest(sharedSecret.getEncoded());
+		mSessionKey = msgDigest_SHA256.digest(mSharedSecret);
 
 		/**
 		 * compute Authentication data
-		 * 
-		 * M = H(i2, sharedSecret)
+		 * (u equals o3 in IEEE 1363.2-2008.)
+		 * M = H(u, sharedSecret)
 		 */
-		o3 = ECSRPUtil.computeO3(new SHA256Digest(), Q_A, Q_B);
-		if (o3.length == 33) {
-			o3 = Arrays.copyOfRange(o3, 1, 33);
+		u = ECSRPUtil.computeO3(new SHA256Digest(), Q_A, Q_B);
+		if (u.length == 33) {
+			u = Arrays.copyOfRange(u, 1, 33);
 		}
  
- 		msgDigest_SHA256.update(o3);
- 		authData = msgDigest_SHA256.digest(sharedSecret.getEncoded());
+ 		msgDigest_SHA256.update(u);
+ 		mAuthData = msgDigest_SHA256.digest(mSharedSecret);
 		
-		return authData;
+		return mAuthData;
 	}
 
+	@Override
 	public boolean verifySEResponse(byte[] seResponse) {
 
 		/**
 		 * compute expected response from SE
 		 */
-		msgDigest_SHA256.update(o3); 
-		msgDigest_SHA256.update(authData);
-		byte[] expectedResponse = msgDigest_SHA256.digest(sharedSecret.getEncoded());
+		msgDigest_SHA256.update(u); 
+		msgDigest_SHA256.update(mAuthData);
+		byte[] expectedResponse = msgDigest_SHA256.digest(mSharedSecret);
 		if (Arrays.equals(seResponse, expectedResponse)) {
 			return true;
 		} else{
@@ -121,10 +132,44 @@ public class ECSRP extends AbstractKeyAgreement{
 		return false;
 	}
 
-	public byte[] getSessionKey() {
-		return K;
+	@Override
+	public CommandApdu getFirstStageAgreementCommand(byte[] clientPublicParam) {
+		return new CommandApdu(CLA, INS_KEYAG_STAGE1, P1, P2,
+				clientPublicParam, LE);
 	}
-	public byte[] getIV(){
-		return iv;
+
+	@Override
+	public CommandApdu getSecondStageAgreementCommand(byte[] clientPublicParam) {
+		return null;
 	}
+
+	@Override
+	public byte[] getSaltFromResponse(byte[] serverPublicParam, byte[] serverSecondStageResponse) {
+		if (serverPublicParam.length < LENGTH_EC_POINT + LENGTH_SALT)
+			return null;
+		
+		return Arrays.copyOfRange(serverPublicParam,
+				LENGTH_EC_POINT, LENGTH_EC_POINT + LENGTH_SALT);
+	}
+
+	@Override
+	public byte[] getIVFromResponse(byte[] serverPublicParam, byte[] serverSecondStageResponse) {
+		if (serverPublicParam.length < LENGTH_EC_POINT + LENGTH_SALT + LENGTH_IV)
+			return null;
+		
+		return Arrays.copyOfRange(serverPublicParam,
+				LENGTH_EC_POINT + LENGTH_SALT, LENGTH_EC_POINT
+				+ LENGTH_SALT + LENGTH_IV);
+	}
+
+	@Override
+	public byte[] getPublicKeyFromResponse(byte[] serverPublicParam, byte[] serverSecondStageResponse) {
+		if (serverPublicParam.length < LENGTH_EC_POINT)
+			return null;
+		
+		return Arrays.copyOfRange(serverPublicParam,
+				0, LENGTH_EC_POINT);
+	}
+
+
 }

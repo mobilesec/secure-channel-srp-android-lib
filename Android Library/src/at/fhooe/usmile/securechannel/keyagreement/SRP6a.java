@@ -3,8 +3,13 @@ package at.fhooe.usmile.securechannel.keyagreement;
 import java.math.BigInteger;
 import java.util.Arrays;
 
+import at.fhooe.usmile.securechannel.CommandApdu;
 import at.fhooe.usmile.securechannel.Converter;
 
+/**
+ * 
+ * @author Endalkachew Asnake
+ */
 public class SRP6a extends AbstractKeyAgreement{
 
 	private static final byte[] N_2048 = Converter
@@ -14,7 +19,6 @@ public class SRP6a extends AbstractKeyAgreement{
 	private static BigInteger k;
 
 	private static final BigInteger g = new BigInteger(1, g_2048);
-
 	private static final BigInteger N = new BigInteger(1, N_2048);
 
 	private byte[] uBytes;
@@ -28,6 +32,7 @@ public class SRP6a extends AbstractKeyAgreement{
 
 	byte[] authData;
 	byte[] publicClient;
+	
 	public SRP6a(){
 		/**
 		 * compute k = H(N,g)
@@ -40,7 +45,8 @@ public class SRP6a extends AbstractKeyAgreement{
 		
 		k = new BigInteger(1, k_2048);
 	}
-	
+
+	@Override
 	public byte[] init() {
 		byte[] aRandom = new byte[32];
 		generateRandom(aRandom);
@@ -55,6 +61,7 @@ public class SRP6a extends AbstractKeyAgreement{
 		return publicClient;
 	}
 
+	@Override
 	public byte[] computeSessionKey(byte[] externalPublic, byte[] identity,
 			byte[] salt, byte[] password) {
 
@@ -90,15 +97,15 @@ public class SRP6a extends AbstractKeyAgreement{
 
 		S = B.mod(N).subtract(tmp).mod(N).modPow(exp, N);
 
-		sharedSecret = S.toByteArray();
-		if (sharedSecret.length == 257) {
-			sharedSecret = Arrays.copyOfRange(sharedSecret, 1, 257);
+		mSharedSecret = S.toByteArray();
+		if (mSharedSecret.length == 257) {
+			mSharedSecret = Arrays.copyOfRange(mSharedSecret, 1, 257);
 		}
 
 		/**
 		 * compute K = H(sharedSecret)
 		 */
-		K = msgDigest_SHA256.digest(sharedSecret);
+		mSessionKey = msgDigest_SHA256.digest(mSharedSecret);
 
 		/**
 		 * compute Authentication data
@@ -111,12 +118,13 @@ public class SRP6a extends AbstractKeyAgreement{
 		}
 
 		msgDigest_SHA256.update(uBytes);
-		authData = msgDigest_SHA256.digest(sharedSecret);
+		authData = msgDigest_SHA256.digest(mSharedSecret);
 
 		return authData;
 
 	}
 
+	@Override
 	public boolean verifySEResponse(byte[] seResponse) {
 
 		/**
@@ -124,7 +132,7 @@ public class SRP6a extends AbstractKeyAgreement{
 		 */
 		msgDigest_SHA256.update(uBytes);
 		msgDigest_SHA256.update(authData);
-		byte[] expectedResponse = msgDigest_SHA256.digest(sharedSecret);
+		byte[] expectedResponse = msgDigest_SHA256.digest(mSharedSecret);
 
 		if (Arrays.equals(seResponse, expectedResponse)) {
 			return true;
@@ -134,4 +142,40 @@ public class SRP6a extends AbstractKeyAgreement{
 
 	}
 
+	@Override
+	public CommandApdu getFirstStageAgreementCommand(byte[] clientPublicParam) {
+		if(clientPublicParam.length != 256)
+			return null;
+		
+        // send 255 as data and last byte as LE
+		return new CommandApdu(CLA, INS_KEYAG_STAGE1, clientPublicParam[255], P2,
+				Arrays.copyOfRange(clientPublicParam, 0, 255), LE );
+	}
+
+	@Override
+	public CommandApdu getSecondStageAgreementCommand(byte[] clientPublicParam) {
+		return new CommandApdu(CLA, INS_KEYAG_STAGE2, P1, P2,
+				new byte[]{}, LE);
+	}
+
+	@Override
+	public byte[] getSaltFromResponse(byte[] serverPublicParam, byte[] serverSecondStageResponse) {
+		if (serverSecondStageResponse.length < LENGTH_SALT)
+			return null;
+		
+		return Arrays.copyOf(serverSecondStageResponse, LENGTH_SALT);
+	}
+
+	@Override
+	public byte[] getIVFromResponse(byte[] serverIVParam, byte[] serverSecondStageResponse) {
+		if (serverSecondStageResponse.length < LENGTH_SALT + LENGTH_IV)
+			return null;
+		
+		return Arrays.copyOfRange(serverSecondStageResponse, LENGTH_SALT, LENGTH_SALT + LENGTH_IV);
+	}
+
+	@Override
+	public byte[] getPublicKeyFromResponse(byte[] serverPublicParam, byte[] serverSecondStageResponse) {
+		return serverPublicParam;
+	}
 }

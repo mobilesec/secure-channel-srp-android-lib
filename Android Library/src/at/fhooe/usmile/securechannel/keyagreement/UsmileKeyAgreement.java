@@ -1,7 +1,11 @@
 package at.fhooe.usmile.securechannel.keyagreement;
 
+import at.fhooe.usmile.securechannel.CommandApdu;
 
-
+/**
+ * Secure channel protocol interface 
+ * @author michaelhoelzl
+ */
 public interface UsmileKeyAgreement {
 
 	/**
@@ -40,4 +44,55 @@ public interface UsmileKeyAgreement {
 	 * @return key buffer
 	 */
 	public byte[] getSessionKey();
+
+	/**
+	 * Get the first stage command which should be sent to the client
+	 * @param clientPublicParam
+	 * @return
+	 */
+	public CommandApdu getFirstStageAgreementCommand(byte[] clientPublicParam);
+	
+	/**
+	 * Get the second stage command which should be sent to the client
+	 * @param clientPublicParam
+	 * @return
+	 */
+	public CommandApdu getSecondStageAgreementCommand(byte[] clientPublicParam);
+	
+	/**
+	 * Get the verification command. ChangePassword indicates if the following command will be a change password command. 
+	 * @param authData
+	 * @param changePassword
+	 * @return
+	 */
+	public CommandApdu getVerificationCommand(byte[] authData, boolean changePassword);
+	
+	/**
+	 * Get the change password command for the protocol
+	 * @param idAndPass
+	 * @return
+	 */
+	public CommandApdu getChangePasswordCommand(byte[] idAndPass);
+
+	/**
+	 * Parse the salt from the response
+	 * @param serverPublicParam
+	 * @param serverSecondStageResponse
+	 * @return Salt
+	 */
+	public byte[] getSaltFromResponse(byte[] serverPublicParam, byte[] serverSecondStageResponse);
+	
+	/**
+	 * Parse the initialization vector from the response
+	 */
+	public byte[] getIVFromResponse(byte[] serverIVParam, byte[] serverSecondStageResponse);
+	
+	/**
+	 * Parse the public key from the response
+	 * @param serverPublicParam
+	 * @param serverSecondStageResponse
+	 * @return
+	 */
+	public byte[] getPublicKeyFromResponse(byte[] serverPublicParam, byte[] serverSecondStageResponse);
+
 }

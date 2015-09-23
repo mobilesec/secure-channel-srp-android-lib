@@ -147,7 +147,7 @@ public class TestActivity extends Activity implements OnClickListener,
 						.getSelectedItem().toString());
 				try {
 					mWriterSS = new FileWriter(new File(mExternalDir,
-							new Date().toString() + "secureSession48bytes.txt"));
+							new Date().getTime() + "secureSession48bytes.txt"));
 				} catch (IOException e1) {
 					// TODO Auto-generated catch block
 					e1.printStackTrace();
@@ -284,10 +284,10 @@ public class TestActivity extends Activity implements OnClickListener,
 			// Apply the adapter to the spinner
 			spinnerReader.setAdapter(adapter);
 		}
+		
 		if (testThreadRunning) {
 			usChannel.initConnection(mAppletAID, readerIndex, mKeyAgreementProtocol);
 		}
-
 	}
 
 	@Override
