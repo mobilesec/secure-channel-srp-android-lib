@@ -23,6 +23,7 @@ import at.fhooe.usmile.securechannel.CommandApdu;
 import at.fhooe.usmile.securechannel.Converter;
 import at.fhooe.usmile.securechannel.IChannelStatusListener;
 import at.fhooe.usmile.securechannel.UsmileSecureChannel;
+import at.fhooe.usmile.securechannel.UsmileSecureChannel.KEYAGREEMENT_PROTOCOL;
 import at.fhooe.usmile.securechanneltest.R;
 
 /**
@@ -32,8 +33,10 @@ import at.fhooe.usmile.securechanneltest.R;
 public class TestActivity extends Activity implements OnClickListener,
 		IChannelStatusListener {
 
-	final static byte[] appletAID = new byte[] { 0x01, 0x02, 0x03, 0x04, 0x05,
+	private final static byte[] APPLETAID_SRP6a = new byte[] { 0x01, 0x02, 0x03, 0x04, 0x05,
 			0x08, 0x00, 0x01 };
+	private final static byte[] APPLETAID_ECSRP = new byte[] { 0x65, 0x63, 0x73, 0x72, 0x70 };
+	
 	private int maxIteration = 3;
 	private int testDataSize = 100;
 	private int readerIndex = 0;
@@ -49,24 +52,27 @@ public class TestActivity extends Activity implements OnClickListener,
 	private TextView statusTextView;
 	private ScrollView scrollView;
 
-	private Handler statusMsgHandler = new Handler();
-	private String statusMsg;
+	private Handler mStatusMsgHandler = new Handler();
+	private String mStatusMsg;
 
 	// for testing
 	private boolean testThreadRunning = false;
 
-	private long startTime = 0L;
-	private long endTime = 0L;
+	private long mStartTime = 0L;
+	private long mEndTime = 0L;
 
-	private File dir = Environment.getExternalStorageDirectory();
-	private FileWriter writerStage1;
-	private FileWriter writerStage2;
-	private FileWriter writerComplete;
-	private FileWriter writerSS;
-	private CommandApdu cmdApdu;
+	private File mExternalDir = Environment.getExternalStorageDirectory();
+	private FileWriter mWriterStage1;
+	private FileWriter mWriterStage2;
+	private FileWriter mWriterComplete;
+	private FileWriter mWriterSS;
 
-	private int testCount = 0;
+	private int mTestCounter = 0;
+	
+	private byte[] mAppletAID;
 
+	private KEYAGREEMENT_PROTOCOL mKeyAgreementProtocol;
+	
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
@@ -86,6 +92,9 @@ public class TestActivity extends Activity implements OnClickListener,
 			usChannel.closeSession();
 		}
 		usChannel = new UsmileSecureChannel(getApplicationContext(), this);
+
+		mAppletAID = APPLETAID_ECSRP;
+		mKeyAgreementProtocol = KEYAGREEMENT_PROTOCOL.KEYAGREEMENT_ECSRP;
 	}
 
 	@Override
@@ -104,8 +113,8 @@ public class TestActivity extends Activity implements OnClickListener,
 		if (v.getId() == R.id.btnTest && spinnerReader.getCount() > 0) {
 
 			testThreadRunning = true;
-			testCount = 0;
-			startTime = System.nanoTime();
+			mTestCounter = 0;
+			mStartTime = System.nanoTime();
 
 			readerIndex = spinnerReader.getSelectedItemPosition();
 			maxIteration = Integer.parseInt(spinnerIteration.getSelectedItem()
@@ -118,12 +127,12 @@ public class TestActivity extends Activity implements OnClickListener,
 			}
 			usChannel = new UsmileSecureChannel(getApplicationContext(), this);
 			try {
-				writerStage1 = new FileWriter(new File(dir,
-						new Date().toString() + "stage1.txt"));
-				writerStage2 = new FileWriter(new File(dir,
-						new Date().toString() + "stage2.txt"));
-				writerComplete = new FileWriter(new File(dir,
-						new Date().toString() + "complete.txt"));
+				mWriterStage1 = new FileWriter(new File(mExternalDir,
+						new Date().getTime() + "_stage1.txt"));
+				mWriterStage2 = new FileWriter(new File(mExternalDir,
+						new Date().getTime() + "_stage2.txt"));
+				mWriterComplete = new FileWriter(new File(mExternalDir,
+						new Date().getTime() + "_complete.txt"));
 
 			} catch (IOException e) {
 				// TODO Auto-generated catch block
@@ -137,7 +146,7 @@ public class TestActivity extends Activity implements OnClickListener,
 				testDataSize = Integer.parseInt(spinnerDatalen
 						.getSelectedItem().toString());
 				try {
-					writerSS = new FileWriter(new File(dir,
+					mWriterSS = new FileWriter(new File(mExternalDir,
 							new Date().toString() + "secureSession48bytes.txt"));
 				} catch (IOException e1) {
 					// TODO Auto-generated catch block
@@ -147,48 +156,47 @@ public class TestActivity extends Activity implements OnClickListener,
 				Thread secureSessionTest = new Thread() {
 					@Override
 					public void run() {
-						// TODO Auto-generated method stub
-
 						byte[] testData = new byte[testDataSize];
-
 						byte[] response;
-
+						CommandApdu cmdApdu;
+						
 						for (int i = 0; i < maxIteration; i++) {
 
 							SecureRandom r = new SecureRandom();
 							r.nextBytes(testData);
 							System.out.println("sent random : "
 									+ Converter.getHex(testData));
+							
 							cmdApdu = new CommandApdu((byte) 0x80, (byte) 0x30,
 									(byte) 0x00, (byte) 0x00, testData,
 									(byte) 0x00);
 
-							startTime = System.nanoTime();
+							mStartTime = System.nanoTime();
 
 							response = usChannel.encodeAndSend(cmdApdu);
 
-							endTime = System.nanoTime();
+							mEndTime = System.nanoTime();
 
-							statusMsg = "\nSecure Messaging test " + (i + 1)
-									+ " -> " + ((endTime - startTime) / 1000)
+							mStatusMsg = "\nSecure Messaging test " + (i + 1)
+									+ " -> " + ((mEndTime - mStartTime) / 1000)
 									+ "  usec";
 
 							try {
-								writerSS.write("\n" + (endTime - startTime)
+								mWriterSS.write("\n" + (mEndTime - mStartTime)
 										/ 1000);
 							} catch (IOException e) {
 								// TODO Auto-generated catch block
 								e.printStackTrace();
 							}
-							statusMsgHandler.post(statusUpdate);
-							System.out.println(statusMsg);
+							mStatusMsgHandler.post(statusUpdate);
+							System.out.println(mStatusMsg);
 
 							System.out.println("+ve response : "
 									+ Converter.getHex(response));
 						}
 						testThreadRunning = false;
 						try {
-							writerSS.close();
+							mWriterSS.close();
 						} catch (IOException e) {
 							// TODO Auto-generated catch block
 							e.printStackTrace();
@@ -207,7 +215,7 @@ public class TestActivity extends Activity implements OnClickListener,
 		@Override
 		public void run() {
 			// TODO Auto-generated method stub
-			statusTextView.append(statusMsg);
+			statusTextView.append(mStatusMsg);
 			scrollView.post(new Runnable() {
 				public void run() {
 					synchronized (this) {
@@ -221,8 +229,8 @@ public class TestActivity extends Activity implements OnClickListener,
 	@Override
 	public void scAuthenticated() {
 
-		testCount++;
-		statusTextView.append("\n Test number : " + testCount
+		mTestCounter++;
+		statusTextView.append("\n Test number : " + mTestCounter
 				+ "\n  Step 1 SE response time >: "
 				+ usChannel.getResponseTimeKeyAgreementInit() + " usec"
 				+ "\n  Step 2 SE response time >: "
@@ -230,14 +238,14 @@ public class TestActivity extends Activity implements OnClickListener,
 				+ "\n  				Overall Time >: " + usChannel.getOverallTime()
 				+ " usec" + "\n=========================================");
 		try {
-			writerStage1.write("\n"
+			mWriterStage1.write("\n"
 					+ String.valueOf(usChannel
 							.getResponseTimeKeyAgreementInit()));
-			writerStage2
+			mWriterStage2
 					.write("\n"
 							+ String.valueOf(usChannel
 									.getResponseTimeAuthentication()));
-			writerComplete.write("\n"
+			mWriterComplete.write("\n"
 					+ String.valueOf(usChannel.getOverallTime()));
 
 		} catch (IOException e) {
@@ -248,30 +256,26 @@ public class TestActivity extends Activity implements OnClickListener,
 			scrollView.fullScroll(ScrollView.FOCUS_DOWN);
 		}
 
-		if (testCount < maxIteration) {
+		if (mTestCounter < maxIteration) {
 			usChannel.closeSession();
 			usChannel = new UsmileSecureChannel(getApplicationContext(), this);
-			// usChannel.establishSecureSession(passwordBytes);
 		} else {
-			testCount = 0;
+			mTestCounter = 0;
 
 			testThreadRunning = false;
 			try {
-				writerStage1.close();
-				writerStage2.close();
-				writerComplete.close();
+				mWriterStage1.close();
+				mWriterStage2.close();
+				mWriterComplete.close();
 			} catch (IOException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
-
 		}
-
 	}
 
 	@Override
 	public void serviceAvailable(String[] terminals) {
-		// TODO Auto-generated method stub
 		if (spinnerReader.getCount() == 0) {
 			ArrayAdapter<String> adapter = new ArrayAdapter<String>(this,
 					android.R.layout.simple_spinner_dropdown_item, terminals);
@@ -281,7 +285,7 @@ public class TestActivity extends Activity implements OnClickListener,
 			spinnerReader.setAdapter(adapter);
 		}
 		if (testThreadRunning) {
-			usChannel.initConnection(appletAID, readerIndex);
+			usChannel.initConnection(mAppletAID, readerIndex, mKeyAgreementProtocol);
 		}
 
 	}

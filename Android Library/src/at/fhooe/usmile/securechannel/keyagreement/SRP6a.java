@@ -3,8 +3,6 @@ package at.fhooe.usmile.securechannel.keyagreement;
 import java.math.BigInteger;
 import java.util.Arrays;
 
-import javax.crypto.Cipher;
-
 import at.fhooe.usmile.securechannel.Converter;
 
 public class SRP6a extends AbstractKeyAgreement{

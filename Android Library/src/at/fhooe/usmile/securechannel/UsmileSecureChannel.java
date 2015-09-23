@@ -1,10 +1,12 @@
 package at.fhooe.usmile.securechannel;
 
+import java.security.Security;
 import java.util.Arrays;
 
 import android.content.Context;
 import android.os.Handler;
 import android.util.Log;
+import at.fhooe.usmile.securechannel.keyagreement.ECSRP;
 import at.fhooe.usmile.securechannel.keyagreement.SRP6a;
 import at.fhooe.usmile.securechannel.keyagreement.UsmileKeyAgreement;
 
@@ -14,6 +16,15 @@ import at.fhooe.usmile.securechannel.keyagreement.UsmileKeyAgreement;
  */
 public class UsmileSecureChannel implements ISEServiceStatusListener{
 
+	public enum KEYAGREEMENT_PROTOCOL {
+		KEYAGREEMENT_SRP6a,
+		KEYAGREEMENT_ECSRP,
+	}
+
+	private static final int LENGTH_EC_POINT = ECSRP.LENGTH_EC_POINT;
+	private static final int LENGTH_SALT = 16;
+	private static final int LENGTH_IV = 16;
+	
 	static private UsmileKeyAgreement usmileKeyAgreement;
 	static private SecureMessaging usmileSecureMessaging;
 	private boolean sessionSecure;
@@ -60,12 +71,11 @@ public class UsmileSecureChannel implements ISEServiceStatusListener{
 	
 	private final static int MIN_PASSWORD_LENGTH = 6;
 	
-	 
 	
 	//ChannelStatusListener channelSatusListener;
 	IChannelStatusListener channelSatusListener;
 
-	//////////////////////////////////** for performance measurement */////////////////////////////////////////////
+	////////////////////////** for performance measurement *//////////////////////////
 	long starttime = 0L;
 	long endtime = 0L;
 	
@@ -75,6 +85,8 @@ public class UsmileSecureChannel implements ISEServiceStatusListener{
 	long overAllKeyAgreementElapsedTime = 0L;
 	private int selectedReader;
 	private byte[] mUserID;
+	private KEYAGREEMENT_PROTOCOL mAgreementProtocol;
+	private int mKA_modulusLength;
  	
 	/**
 	 * Returns secure element response time for the initialization of the key agreement
@@ -113,10 +125,8 @@ public class UsmileSecureChannel implements ISEServiceStatusListener{
 	 */
 	public UsmileSecureChannel(Context context,
 			IChannelStatusListener listener) {
-
 		
-		seConnection = new SEConnection(context, this);
-		usmileKeyAgreement = new SRP6a(); 
+		seConnection = new SEConnection(context, this); 
 		channelSatusListener = listener;
 	}
 
@@ -139,10 +149,13 @@ public class UsmileSecureChannel implements ISEServiceStatusListener{
 	 * @param appletID Applet ID
 	 * @param readerIndex index of the terminal that the secure element is connected to
 	 */
-	public void initConnection(byte[] appletID, int readerIndex){
+	public void initConnection(byte[] appletID, int readerIndex, KEYAGREEMENT_PROTOCOL protocol){
 		
 		AID = appletID;
 		selectedReader = readerIndex;
+		mAgreementProtocol = protocol;
+		
+		initKeyAgreement(protocol);
 		
 		initThread = new Thread() {
 			public void run() {
@@ -186,6 +199,7 @@ public class UsmileSecureChannel implements ISEServiceStatusListener{
 							SW = STATUS_INITIALIZED;
 						}else{
 							SW = Converter.getHex(respApdu.getSW()); 
+							SW = STATUS_AUTH_FAILED_FROM_SE;
 						}	
 						
 					}else{
@@ -203,6 +217,18 @@ public class UsmileSecureChannel implements ISEServiceStatusListener{
 	}
 	
 	
+	private void initKeyAgreement(KEYAGREEMENT_PROTOCOL protocol) {
+		switch(protocol){
+		case KEYAGREEMENT_ECSRP:
+			usmileKeyAgreement = new ECSRP();
+		case KEYAGREEMENT_SRP6a:
+		default:
+			usmileKeyAgreement = new SRP6a();
+			mKA_modulusLength = 256;
+			break;
+		}
+	}
+
 	/**
 	 * Changes userID and password based on the specified parameters. 
 	 * This method can be called only after the long running task of initConnection method is completed 

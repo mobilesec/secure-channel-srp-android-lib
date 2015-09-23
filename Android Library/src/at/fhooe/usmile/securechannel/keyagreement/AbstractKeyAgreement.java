@@ -4,6 +4,8 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 
+import at.fhooe.usmile.securechannel.PRNGFixes;
+
 /**
  * @author Endalkachew Asnake
  * 
@@ -27,10 +29,10 @@ public abstract class AbstractKeyAgreement implements UsmileKeyAgreement{
 	 * Constructor for key agreement
 	 */
 	public AbstractKeyAgreement() {
-
 		try { 
-			msgDigest_SHA256 = MessageDigest.getInstance("SHA-256"); 
+			PRNGFixes.apply();
 			
+			msgDigest_SHA256 = MessageDigest.getInstance("SHA-256"); 
 		} catch (NoSuchAlgorithmException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();

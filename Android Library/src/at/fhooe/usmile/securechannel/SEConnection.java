@@ -18,19 +18,16 @@ import android.widget.Toast;
  */
 class SEConnection implements SEService.CallBack {
 
-	static public SEService seService;
+	public static SEService seService;
 	private Reader reader = null;
  	private Reader[] readers;
-	Channel channel ;
-	byte[] AID;
-	String[] readerList ;
- 
+ 	private Channel channel ;
+	private String[] readerList ;
 	
-	long elapsedTime = 0L;
+	private long elapsedTime = 0L;
 	
-	Context appContext;
+	private Context appContext;
 	private ISEServiceStatusListener mListener;
-	
 	
 	/**
 	 * Constructor for Secure Element Connection
@@ -45,8 +42,6 @@ class SEConnection implements SEService.CallBack {
 			mListener = listener;
 		 
 			seService = new SEService(appContext.getApplicationContext(), this);
-			
-			
 		  } catch (SecurityException e) {
 			    Log.e("Security Exception", "Binding not allowed, uses-permission org.simalliance.openmobileapi.SMARTCARD?");
 		} catch (Exception e) {
@@ -54,20 +49,19 @@ class SEConnection implements SEService.CallBack {
 		}
 	}
 	
- /**
-  * closes the connection to the secure element
-  */
-	public void closeConnection(){
-		 if (seService != null && seService.isConnected()) {
-		      seService.shutdown();
-		      Log.i("Connection ", "SE Connection Closed");		 
-		 }
+	/**
+	 * closes the connection to the secure element
+	 */
+	public void closeConnection() {
+		if (seService != null && seService.isConnected()) {
+			seService.shutdown();
+			Log.i("Connection ", "SE Connection Closed");
+		}
 	}
 	
  
 	@Override
 	public void serviceConnected(SEService arg0) {
-		// TODO Auto-generated method stub
 		readers = seService.getReaders();
 		readerList = new String[readers.length];
 		int i = 0;
@@ -76,9 +70,7 @@ class SEConnection implements SEService.CallBack {
 			readerList[i] = r.getName();
 			i += 1;
 		}
-		//if(selectApplet(AID, 0)){
-	 	 mListener.seServiceAvailable(readerList);
-	 	//}
+		mListener.seServiceAvailable(readerList);
 	}
 	
 	/**
@@ -116,17 +108,13 @@ class SEConnection implements SEService.CallBack {
 	    	byte[] respApdu = new byte[0];
 			
 	    	try {
-				
 				long commandTime = 0L;
 				long responseTime = 0L;
 				commandTime = System.nanoTime();
 				respApdu = channel.transmit(cmdApdu);
 				responseTime = System.nanoTime();
 				elapsedTime = responseTime - commandTime;
-				
-			 				 
 			} catch (IOException e) {
-				// TODO Auto-generated catch block
 				Toast.makeText(appContext.getApplicationContext(), e.getMessage(), Toast.LENGTH_SHORT).show();
 			}
 	    	return respApdu;

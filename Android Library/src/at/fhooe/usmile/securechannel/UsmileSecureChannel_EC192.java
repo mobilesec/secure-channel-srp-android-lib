@@ -1,11 +1,7 @@
 package at.fhooe.usmile.securechannel;
 
-import java.math.BigInteger;
+import java.security.Security;
 import java.util.Arrays;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
-import org.bouncycastle.jce.provider.BrokenPBE.Util;
 
 import android.content.Context;
 import android.os.Handler;
@@ -14,6 +10,10 @@ import at.fhooe.usmile.securechannel.keyagreement.ECSRP;
 import at.fhooe.usmile.securechannel.keyagreement.UsmileKeyAgreement;
 
 public class UsmileSecureChannel_EC192 implements ISEServiceStatusListener{
+
+	static {
+		Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
+	}
 
 	private static final int LENGTH_EC_POINT =  ECSRP.LENGTH_EC_POINT;
 	private static final int LENGTH_SALT = 16;
@@ -45,8 +45,10 @@ public class UsmileSecureChannel_EC192 implements ISEServiceStatusListener{
     private boolean sessionSecure;
     
 	Handler handler = new Handler();
-	
-    private static final int READER = 2;
+
+	byte[] incomingPublicParam;
+	private byte[] salt;
+	private byte[] iv;
     private byte[] AID;
     
     	private int selectedReader;
@@ -63,7 +65,7 @@ public class UsmileSecureChannel_EC192 implements ISEServiceStatusListener{
 	//ChannelStatusListener channelSatusListener;
 	IChannelStatusListener channelSatusListener;
 	
-    //////////////////////////////////** for performance measurement */////////////////////////////////////////////
+    //////////////////////////** for performance measurement */////////////////////////////
     long starttime = 0L;
     long endtime = 0L;
     long step1SEresponseTime = 0L;
@@ -92,7 +94,7 @@ public class UsmileSecureChannel_EC192 implements ISEServiceStatusListener{
 		return overAllKeyAgreementElapsedTime;
 	}
 	
-    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    ////////////////////////////////////////////////////////////////////
 
     public UsmileSecureChannel_EC192(Context context,
 			IChannelStatusListener listener) {
@@ -100,7 +102,6 @@ public class UsmileSecureChannel_EC192 implements ISEServiceStatusListener{
 		seConnection = new SEConnection(context, this);
 		usmileKeyAgreement = new ECSRP(); 
 		channelSatusListener = listener;
-		
     }
 
     public boolean isSessionSecure() {
@@ -115,16 +116,6 @@ public class UsmileSecureChannel_EC192 implements ISEServiceStatusListener{
 		seConnection.closeConnection();
 	}
 
-	public static String byteArrayToHexString(byte[] array) {
-		StringBuffer hexString = new StringBuffer();
-		for (byte b : array) {
-			int intVal = b & 0xff;
-			if (intVal < 0x10)
-				hexString.append("0");
-			hexString.append(Integer.toHexString(intVal));
-		}
-		return hexString.toString();
-	}
 
 	public void initConnection(byte[] appletID, int readerIndex){
 		
@@ -134,10 +125,11 @@ public class UsmileSecureChannel_EC192 implements ISEServiceStatusListener{
 		initThread = new Thread() {
 			public void run() {
 				
-				System.out.println("AID "+ byteArrayToHexString(AID));
+				System.out.println("AID "+ Converter.getHex(AID));
 				if(seConnection.selectApplet(AID, selectedReader)){
 					starttime = System.nanoTime();
-					SW = STATUS_INITIALIZED;
+
+	                SW = runKeyAgreement();
 				}else{
 					SW = STATUS_SELECTION_FAILED;
 				}
@@ -148,18 +140,50 @@ public class UsmileSecureChannel_EC192 implements ISEServiceStatusListener{
 		initThread.start();
 	}
 
-	public void authenticate(byte[] userID, final byte[] password){
+	public void authenticate(final byte[] userID, final byte[] password){
 		authThread = new Thread() {
-			public void run() {
 
+			public void run() {
+				ResponseApdu respApdu;
+				
 				SW = STATUS_AUTH_FAILED_FROM_SE;
-				
-                cmdApdu1 = getCommandApdu(CLA, (byte) 0x20, P1, P2,
-                        new byte[]{}, LE);
-                System.out.println(cmdApdu1.toString());
-                seConnection.sendCommand(cmdApdu1.getApduBuffer());
-				
-                runKeyAgreement(password);
+
+				byte[] authData = usmileKeyAgreement.computeSessionKey(
+						incomingPublicParam, userID, salt,
+						password);
+
+    			cmdApdu1 = getCommandApdu(CLA, INS_KEYAG_STAGE3, P1, P2, authData,
+    					LE);
+
+    			respApdu = new ResponseApdu(seConnection.sendCommand(cmdApdu1
+    					.getApduBuffer()));
+
+    			step2SEresponseTime = seConnection.getElapsedTime() / 1000;
+
+    			System.out.println("Authdata "+Converter.getHex(authData));
+    			System.out.println("Rspone "+Converter.getHex(respApdu.getApduBuffer()));
+    			if (statusOk(respApdu)) {
+    				if (usmileKeyAgreement.verifySEResponse(respApdu.getData())) {
+    					endtime = System.nanoTime();
+    					
+    					sessionSecure = true;
+    					usmileSecureSession = new SecureMessaging(
+    							usmileKeyAgreement.getSessionKey(), iv);
+
+    					overAllKeyAgreementElapsedTime = (endtime - starttime) / 1000;
+    					
+    					System.out.println("success in "
+    							+ overAllKeyAgreementElapsedTime + " µsec");
+    					System.out.println("Authenticated \n");
+    					
+    					SW = STATUS_CONNECTED;
+    				} else {
+    					SW = STATUS_AUTH_FAILED_FROM_APP;
+    				}
+    			} else {
+    				Log.i("uschannel ", "Device-side verification failed ");
+    				SW = STATUS_AUTH_FAILED_FROM_SE;
+    			}
                 
 				handler.post(submitToCallBackListener);
 			}
@@ -199,9 +223,11 @@ public class UsmileSecureChannel_EC192 implements ISEServiceStatusListener{
      * executes complete key agreement process
      *
      * @param passwordBytes
+     * @return 
      */
-    private void runKeyAgreement(byte[] passwordBytes) {
-
+    private String runKeyAgreement() {
+    	String status = STATUS_TERMINATED;
+    	
         starttime = System.nanoTime();
         
         byte[] publicThis = usmileKeyAgreement.init();
@@ -224,63 +250,26 @@ public class UsmileSecureChannel_EC192 implements ISEServiceStatusListener{
         if (statusOk(respApdu)) 
         {
             long startClient = System.nanoTime();
-			byte[] serverPublicKey = Arrays.copyOfRange(serverInitSRPResponse,
+			incomingPublicParam = Arrays.copyOfRange(serverInitSRPResponse,
 					0, LENGTH_EC_POINT);
-			byte[] salt = Arrays.copyOfRange(serverInitSRPResponse,
+			salt = Arrays.copyOfRange(serverInitSRPResponse,
 					LENGTH_EC_POINT, LENGTH_EC_POINT + LENGTH_SALT);
-			byte[] iv = Arrays.copyOfRange(serverInitSRPResponse,
+			iv = Arrays.copyOfRange(serverInitSRPResponse,
 					LENGTH_EC_POINT + LENGTH_SALT, LENGTH_EC_POINT
 							+ LENGTH_SALT + LENGTH_IV);
-			byte[] authData = usmileKeyAgreement.computeSessionKey(
-					serverPublicKey, "usmile".getBytes(), salt,
-					"usmile".getBytes());
-			
+
+			System.out.println("Client public param " + Converter.getHex(incomingPublicParam));
             long endClient = System.nanoTime();
             
             System.out.println("client secret computation " + (endClient-startClient)/1000);
             
-//			cmdApdu1 = getCommandApdu(CLA, (byte) 0x10, P1, P2, authData, LE);
-//			respApdu = new ResponseApdu(seConnection.sendCommand(cmdApdu1
-//					.getApduBuffer()));
-			// System.out.println("Response Output: "+
-			// Converter.getHex(respData));
-
-			cmdApdu1 = getCommandApdu(CLA, INS_KEYAG_STAGE3, P1, P2, authData,
-					LE);
-
-			respApdu = new ResponseApdu(seConnection.sendCommand(cmdApdu1
-					.getApduBuffer()));
-
-			step2SEresponseTime = seConnection.getElapsedTime() / 1000;
-
-			if (statusOk(respApdu)) {
-				if (usmileKeyAgreement.verifySEResponse(Arrays.copyOf(
-						respApdu.getData(), 32))) {
-					endtime = System.nanoTime();
-					
-					sessionSecure = true;
-					usmileSecureSession = new SecureMessaging(
-							usmileKeyAgreement.getSessionKey(), iv);
-
-					overAllKeyAgreementElapsedTime = (endtime - starttime) / 1000;
-					
-					System.out.println("success in "
-							+ overAllKeyAgreementElapsedTime + " µsec");
-					System.out.println("Authenticated \n");
-					
-					SW = STATUS_CONNECTED;
-				} else {
-					SW = STATUS_AUTH_FAILED_FROM_APP;
-				}
-			} else {
-				Log.i("uschannel ", "from device authentication failed ");
-				SW = STATUS_AUTH_FAILED_FROM_SE;
-			}
-
+			status = STATUS_INITIALIZED;
         } else {
             System.out.println("failed : ");
-			SW = STATUS_AUTH_FAILED_FROM_SE;		
+            status = STATUS_AUTH_FAILED_FROM_SE;		
         }
+        
+        return status;
     }
 
     /**
@@ -315,7 +304,6 @@ public class UsmileSecureChannel_EC192 implements ISEServiceStatusListener{
             try {
                 throw (new Exception("Secure Session not established "));
             } catch (Exception e) {
-                // TODO Auto-generated catch block
                 e.printStackTrace();
             }
             return null;
@@ -352,20 +340,19 @@ public class UsmileSecureChannel_EC192 implements ISEServiceStatusListener{
 			} else if (SW.equals(STATUS_SELECTION_FAILED)){
 				channelSatusListener.scFailed("Applet Selection Failed");
 			} else if (SW.equals(STATUS_AUTH_FAILED_FROM_APP)){
-				channelSatusListener.scFailed("Authentication failer");
+				channelSatusListener.scFailed("Authentication failure from App");
 			}else if (SW.equals(STATUS_AUTH_FAILED_FROM_SE)){
-				channelSatusListener.scFailed("Authentication failer");
+				channelSatusListener.scFailed("Authentication failure from SE");
 			}else if (SW.equals(STATUS_PASSWORD_CHANGED)){
 				channelSatusListener.scPasswordChanged();
 			}else if (SW.equals(STATUS_PASSWORD_CHANGE_FAILED)){
 				channelSatusListener.scFailed("Failed to change password");
 			}else if (SW.equals(STATUS_PASSWORD_SHORT)){
-				channelSatusListener.scFailed("password too short");
+				channelSatusListener.scFailed("Password too short");
 			}else  {
 				channelSatusListener.scFailed(SW);
 			}
 		}
 	};
-
  
 }

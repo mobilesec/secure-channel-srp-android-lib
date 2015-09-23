@@ -1,21 +1,16 @@
 package at.fhooe.usmile.securechannel.keyagreement;
 
 import java.math.BigInteger;
-import java.security.KeyFactory;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.security.PublicKey;
-import java.security.SecureRandom;
 import java.security.Security;
 import java.util.Arrays;
-
-import javax.crypto.Cipher;
 
 import org.bouncycastle.crypto.digests.SHA256Digest;
 import org.bouncycastle.jce.ECNamedCurveTable;
 import org.bouncycastle.jce.spec.ECParameterSpec;
 import org.bouncycastle.math.ec.ECFieldElement;
 import org.bouncycastle.math.ec.ECPoint;
+
+import at.fhooe.usmile.securechannel.Converter;
 
 
 /**
@@ -48,10 +43,6 @@ public class ECSRP extends AbstractKeyAgreement{
 	private BigInteger a;
 
 	
-	static {
-		Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
-	}
-
 	/**
 	 * key agreement init
 	 */
@@ -123,6 +114,8 @@ public class ECSRP extends AbstractKeyAgreement{
 		if (Arrays.equals(seResponse, expectedResponse)) {
 			return true;
 		} else{
+			System.out.println("Expected: " + Converter.getHex(expectedResponse));
+			System.out.println("Actual: " + Converter.getHex(seResponse));
 			System.err.println("Failed " );
 		}
 		return false;
