@@ -25,7 +25,7 @@ public abstract class AbstractKeyAgreement implements UsmileKeyAgreement{
 	protected final static byte P1 = 0x00;
 	protected final static byte P2 = 0x00;
 	protected final static byte LE = 0x00;
-
+	
 	protected static final int LENGTH_SALT = 16;
 	protected static final int LENGTH_IV = 16;
 	

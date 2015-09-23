@@ -106,7 +106,6 @@ public class TestActivity extends Activity implements OnClickListener,
 
 	@Override
 	public void onClick(View v) {
-		// TODO Auto-generated method stub
 		if (testThreadRunning) {
 			return;
 		}
@@ -135,7 +134,6 @@ public class TestActivity extends Activity implements OnClickListener,
 						new Date().getTime() + "_complete.txt"));
 
 			} catch (IOException e) {
-				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
 		} else if (v.getId() == R.id.btnTestSecureSession) {
@@ -149,7 +147,6 @@ public class TestActivity extends Activity implements OnClickListener,
 					mWriterSS = new FileWriter(new File(mExternalDir,
 							new Date().getTime() + "secureSession48bytes.txt"));
 				} catch (IOException e1) {
-					// TODO Auto-generated catch block
 					e1.printStackTrace();
 				}
 
@@ -185,7 +182,6 @@ public class TestActivity extends Activity implements OnClickListener,
 								mWriterSS.write("\n" + (mEndTime - mStartTime)
 										/ 1000);
 							} catch (IOException e) {
-								// TODO Auto-generated catch block
 								e.printStackTrace();
 							}
 							mStatusMsgHandler.post(statusUpdate);
@@ -198,7 +194,6 @@ public class TestActivity extends Activity implements OnClickListener,
 						try {
 							mWriterSS.close();
 						} catch (IOException e) {
-							// TODO Auto-generated catch block
 							e.printStackTrace();
 						}
 					}
@@ -214,7 +209,6 @@ public class TestActivity extends Activity implements OnClickListener,
 
 		@Override
 		public void run() {
-			// TODO Auto-generated method stub
 			statusTextView.append(mStatusMsg);
 			scrollView.post(new Runnable() {
 				public void run() {
@@ -249,7 +243,6 @@ public class TestActivity extends Activity implements OnClickListener,
 					+ String.valueOf(usChannel.getOverallTime()));
 
 		} catch (IOException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
 		synchronized (this) {
@@ -268,7 +261,6 @@ public class TestActivity extends Activity implements OnClickListener,
 				mWriterStage2.close();
 				mWriterComplete.close();
 			} catch (IOException e) {
-				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
 		}
@@ -292,9 +284,7 @@ public class TestActivity extends Activity implements OnClickListener,
 
 	@Override
 	public void scInitialized() {
-		// TODO Auto-generated method stub
 		usChannel.authenticate(userID, passwordBytes);
-
 	}
 
 	@Override
@@ -306,20 +296,17 @@ public class TestActivity extends Activity implements OnClickListener,
 
 	@Override
 	public void scBlocked() {
-		// TODO Auto-generated method stub
 		Toast.makeText(getApplicationContext(), "channel blocked",
 				Toast.LENGTH_LONG).show();
 	}
 
 	@Override
 	public void scTerminated() {
-		// TODO Auto-generated method stub
 
 	}
 
 	@Override
 	public void scPasswordChanged() {
-		// TODO Auto-generated method stub
 
 	}
 }
